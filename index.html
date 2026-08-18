@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>字幕タイミング打刻ツール</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#171a21" />
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1f232c;
+    --border: #2a2f3a;
+    --text: #e6e8ec;
+    --text-dim: #8b93a1;
+    --accent: #4f8cff;
+    --accent-dim: #2c4a86;
+    --done: #2f6b46;
+    --current: #4f8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .step { font-size: 13px; color: var(--text-dim); }
+
+  .layout {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .panel {
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .setup-panel { width: 100%; max-width: 640px; margin: 0 auto; }
+
+  textarea {
+    width: 100%;
+    min-height: 260px;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: vertical;
+  }
+  label { display: block; font-size: 13px; color: var(--text-dim); margin: 16px 0 6px; }
+  input[type="file"] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .split-options { display: flex; gap: 16px; margin-top: 6px; }
+  .split-options label {
+    display: flex; align-items: center; gap: 6px;
+    margin: 0; font-size: 13px; color: var(--text);
+    cursor: pointer;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    padding: 10px 18px;
+    background: var(--accent);
+    color: white;
+    transition: opacity 0.15s;
+  }
+  button:hover { opacity: 0.88; }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  button.small { padding: 6px 12px; font-size: 13px; }
+
+  .primary-row { margin-top: 20px; display: flex; justify-content: flex-end; }
+
+  /* Timing screen */
+  .timing-screen { display: flex; flex: 1; min-height: 0; }
+  .list-panel {
+    flex: 1.1;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .list-scroll { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .line-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 10px 20px;
+    border-left: 3px solid transparent;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .line-item .idx { color: var(--text-dim); font-size: 12px; width: 24px; flex-shrink: 0; text-align: right; }
+  .line-item .ts { color: var(--text-dim); font-size: 12px; width: 66px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .line-item .txt { flex: 1; }
+  .line-item.done { border-left-color: var(--done); }
+  .line-item.done .ts { color: #6fbf87; }
+  .line-item.current {
+    border-left-color: var(--current);
+    background: rgba(79,140,255,0.10);
+  }
+  .line-item.current .txt { color: white; font-weight: 500; }
+
+  .control-panel {
+    flex: 0.9;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    gap: 16px;
+    min-height: 0;
+  }
+  .video-wrap {
+    position: relative;
+    width: 100%;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .video-wrap video {
+    width: 100%;
+    max-height: 38vh;
+    display: block;
+    background: #000;
+  }
+  .caption-overlay {
+    position: absolute;
+    left: 50%;
+    bottom: 48px;
+    transform: translateX(-50%);
+    max-width: 90%;
+    text-align: center;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+    pointer-events: none;
+  }
+  .caption-overlay:not(:empty) {
+    background: rgba(0,0,0,0.75);
+    padding: 4px 10px;
+    border-radius: 4px;
+  }
+  .video-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .time-display {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .cc-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor: pointer;
+    margin: 0;
+  }
+
+  .big-mark-btn {
+    padding: 28px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 12px;
+    background: var(--accent);
+  }
+  .hint {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+  }
+  kbd {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+  }
+
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row button { flex: 1; }
+
+  .export-box {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .export-format { display: flex; gap: 12px; font-size: 13px; }
+  .export-format label { display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; color: var(--text); }
+
+  .status-note { font-size: 12px; color: var(--text-dim); }
+
+</style>
+</head>
+<body>
+
+<header>
+  <h1>字幕タイミング打刻ツール</h1>
+  <div class="step" id="stepLabel">Step 1: テキストと音声を用意</div>
+</header>
+
+<div class="layout" id="setupLayout">
+  <div class="panel setup-panel">
+    <label for="textInput">字幕にするテキスト(1行 = 1字幕)</label>
+    <textarea id="textInput" placeholder="ここにテキストを貼り付け。改行ごとに1つの字幕行として扱います。"></textarea>
+
+    <label>行の分け方</label>
+    <div class="split-options">
+      <label><input type="radio" name="splitMode" value="line" checked> 改行ごと</label>
+      <label><input type="radio" name="splitMode" value="sentence"> 句点(。！？)ごと</label>
+    </div>
+
+    <label for="videoInput">動画ファイル(ローカル)</label>
+    <input type="file" id="videoInput" accept="video/*" />
+
+    <div class="primary-row">
+      <button id="startBtn" disabled>タイミング打刻を開始 →</button>
+    </div>
+  </div>
+</div>
+
+<div class="layout timing-screen" id="timingLayout" style="display:none;">
+  <div class="list-panel">
+    <div class="list-scroll" id="lineList"></div>
+  </div>
+  <div class="control-panel">
+    <div class="video-wrap">
+      <video id="mediaEl" controls></video>
+      <div class="caption-overlay" id="captionOverlay"></div>
+    </div>
+    <div class="video-toolbar">
+      <span class="time-display" id="timeDisplay">00:00.0 / 00:00.0</span>
+      <label class="cc-toggle">
+        <input type="checkbox" id="ccToggle" checked> 字幕プレビュー(CC)
+      </label>
+    </div>
+
+    <button class="big-mark-btn" id="markBtn">この行のタイミングを打刻</button>
+    <div class="hint"><kbd>Space</kbd> で打刻 / <kbd>←</kbd> 5秒戻る / <kbd>→</kbd> 5秒進む</div>
+
+    <div class="btn-row">
+      <button class="secondary small" id="undoBtn">1つ前を取り消す</button>
+      <button class="secondary small" id="restartBtn">最初からやり直す</button>
+    </div>
+
+    <div class="status-note" id="statusNote">0 / 0 行 打刻済み</div>
+
+    <div class="export-box">
+      <div class="export-format">
+        <label><input type="radio" name="exportFormat" value="srt" checked> SRT</label>
+        <label><input type="radio" name="exportFormat" value="vtt"> VTT</label>
+      </div>
+      <button id="exportBtn" disabled>字幕ファイルをダウンロード</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const textInput = document.getElementById('textInput');
+  const videoInput = document.getElementById('videoInput');
+  const startBtn = document.getElementById('startBtn');
+  const setupLayout = document.getElementById('setupLayout');
+  const timingLayout = document.getElementById('timingLayout');
+  const stepLabel = document.getElementById('stepLabel');
+  const lineList = document.getElementById('lineList');
+  const mediaEl = document.getElementById('mediaEl');
+  const captionOverlay = document.getElementById('captionOverlay');
+  const ccToggle = document.getElementById('ccToggle');
+  const timeDisplay = document.getElementById('timeDisplay');
+  const markBtn = document.getElementById('markBtn');
+  const undoBtn = document.getElementById('undoBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const statusNote = document.getElementById('statusNote');
+  const exportBtn = document.getElementById('exportBtn');
+
+  let lines = [];          // [{ text, start, end }]
+  let currentIndex = 0;
+  let videoObjectUrl = null;
+  let videoReady = false;
+
+  function splitText(raw, mode) {
+    if (mode === 'sentence') {
+      return raw
+        .split(/(?<=[。！？!?])|\n+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+    return raw.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  }
+
+  function updateStartEnabled() {
+    startBtn.disabled = !(videoReady && textInput.value.trim().length > 0);
+  }
+  textInput.addEventListener('input', updateStartEnabled);
+
+  videoInput.addEventListener('change', () => {
+    const file = videoInput.files[0];
+    if (!file) { videoReady = false; updateStartEnabled(); return; }
+    if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+    videoObjectUrl = URL.createObjectURL(file);
+    mediaEl.src = videoObjectUrl;
+    videoReady = true;
+    updateStartEnabled();
+  });
+
+  startBtn.addEventListener('click', () => {
+    const mode = document.querySelector('input[name="splitMode"]:checked').value;
+    const raw = textInput.value;
+    lines = splitText(raw, mode).map(text => ({ text, start: null, end: null }));
+    if (lines.length === 0) return;
+    currentIndex = 0;
+    setupLayout.style.display = 'none';
+    timingLayout.style.display = 'flex';
+    stepLabel.textContent = 'Step 2: 動画を再生しながら Space で打刻';
+    renderList();
+    updateStatus();
+    refreshCaptionOverlay();
+  });
+
+  function renderList() {
+    lineList.innerHTML = '';
+    lines.forEach((line, i) => {
+      const div = document.createElement('div');
+      div.className = 'line-item';
+      if (line.start !== null) div.classList.add('done');
+      if (i === currentIndex) div.classList.add('current');
+      const ts = document.createElement('span');
+      ts.className = 'ts';
+      ts.textContent = line.start !== null ? formatTime(line.start, false) : '--:--';
+      div.innerHTML = `<span class="idx">${i + 1}</span>`;
+      div.appendChild(ts);
+      const txt = document.createElement('span');
+      txt.className = 'txt';
+      txt.textContent = line.text;
+      div.appendChild(txt);
+      div.id = 'line-' + i;
+      div.addEventListener('click', () => {
+        currentIndex = i;
+        renderList();
+        updateStatus();
+      });
+      lineList.appendChild(div);
+    });
+    const currentEl = document.getElementById('line-' + currentIndex);
+    if (currentEl) currentEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  function updateStatus() {
+    const doneCount = lines.filter(l => l.start !== null).length;
+    statusNote.textContent = `${doneCount} / ${lines.length} 行 打刻済み`;
+    exportBtn.disabled = doneCount === 0;
+    markBtn.disabled = currentIndex >= lines.length;
+    markBtn.textContent = currentIndex >= lines.length
+      ? 'すべて打刻済み'
+      : `この行のタイミングを打刻 (${currentIndex + 1}/${lines.length})`;
+  }
+
+  function markCurrent() {
+    if (currentIndex >= lines.length) return;
+    const t = mediaEl.currentTime;
+    lines[currentIndex].start = t;
+    if (currentIndex > 0 && lines[currentIndex - 1].end === null) {
+      lines[currentIndex - 1].end = t;
+    }
+    currentIndex++;
+    renderList();
+    updateStatus();
+    refreshCaptionOverlay();
+  }
+
+  function undoLast() {
+    if (currentIndex === 0) return;
+    currentIndex--;
+    lines[currentIndex].start = null;
+    lines[currentIndex].end = null;
+    if (currentIndex > 0) lines[currentIndex - 1].end = null;
+    renderList();
+    updateStatus();
+    refreshCaptionOverlay();
+  }
+
+  restartBtn.addEventListener('click', () => {
+    if (!confirm('打刻をすべてリセットして最初からやり直しますか?')) return;
+    lines.forEach(l => { l.start = null; l.end = null; });
+    currentIndex = 0;
+    renderList();
+    updateStatus();
+    refreshCaptionOverlay();
+  });
+
+  markBtn.addEventListener('click', markCurrent);
+  undoBtn.addEventListener('click', undoLast);
+
+  document.addEventListener('keydown', (e) => {
+    if (timingLayout.style.display === 'none') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      markCurrent();
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      mediaEl.currentTime = Math.max(0, mediaEl.currentTime - 5);
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      mediaEl.currentTime = Math.min(mediaEl.duration || Infinity, mediaEl.currentTime + 5);
+    }
+  }, true);
+
+  function formatTime(sec, withMs = true) {
+    if (sec === null || isNaN(sec)) return '00:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    if (!withMs) return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    const ms = Math.floor((sec % 1) * 10);
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${ms}`;
+  }
+
+  function activeCaptionAt(t) {
+    const timed = lines.filter(l => l.start !== null);
+    for (let idx = 0; idx < timed.length; idx++) {
+      const l = timed[idx];
+      const end = l.end !== null ? l.end : (timed[idx + 1] ? timed[idx + 1].start : Infinity);
+      if (t >= l.start && t < end) return l.text;
+    }
+    return '';
+  }
+
+  function refreshCaptionOverlay() {
+    captionOverlay.textContent = ccToggle.checked ? activeCaptionAt(mediaEl.currentTime) : '';
+  }
+
+  mediaEl.addEventListener('timeupdate', () => {
+    if (!isNaN(mediaEl.duration)) {
+      timeDisplay.textContent = `${formatTime(mediaEl.currentTime)} / ${formatTime(mediaEl.duration)}`;
+    }
+    refreshCaptionOverlay();
+  });
+  ccToggle.addEventListener('change', refreshCaptionOverlay);
+
+  function srtTime(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    const ms = Math.round((sec % 1) * 1000);
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(ms).padStart(3,'0')}`;
+  }
+  function vttTime(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    const ms = Math.round((sec % 1) * 1000);
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+  }
+
+  function buildSubtitleContent(format) {
+    const timed = lines
+      .map((l, i) => ({ ...l, i }))
+      .filter(l => l.start !== null);
+    if (timed.length === 0) return '';
+
+    // Fill missing ends: use next timed line's start, or +3s for the last one.
+    timed.forEach((l, idx) => {
+      if (l.end === null) {
+        if (idx < timed.length - 1) {
+          l.end = timed[idx + 1].start;
+        } else {
+          l.end = l.start + 3;
+        }
+      }
+    });
+
+    if (format === 'vtt') {
+      let out = 'WEBVTT\n\n';
+      timed.forEach((l, idx) => {
+        out += `${idx + 1}\n${vttTime(l.start)} --> ${vttTime(l.end)}\n${l.text}\n\n`;
+      });
+      return out;
+    } else {
+      let out = '';
+      timed.forEach((l, idx) => {
+        out += `${idx + 1}\n${srtTime(l.start)} --> ${srtTime(l.end)}\n${l.text}\n\n`;
+      });
+      return out;
+    }
+  }
+
+  exportBtn.addEventListener('click', () => {
+    const format = document.querySelector('input[name="exportFormat"]:checked').value;
+    const content = buildSubtitleContent(format);
+    if (!content) return;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `subtitles.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+})();
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
